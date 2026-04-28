@@ -1,0 +1,7 @@
+if (mods.practiceMode && checkpoint) {
+  player.x = checkpoint.x;
+  player.y = checkpoint.y;
+  player.velocityY = 0;
+} else {
+  gameOver = true;
+}
