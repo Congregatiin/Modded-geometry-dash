@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>GD ULTRA ENGINE</title>
+  <style>
+    body { margin:0; overflow:hidden; background:black; }
+    canvas { display:block; margin:auto; touch-action:none; }
+  </style>
+</head>
+<body>
+<canvas id="c"></canvas>
+
+<script>
+const c = document.getElementById("c");
+const ctx = c.getContext("2d");
+c.width = 800;
+c.height = 400;
+
+// Assets
+let playerImg = new Image();
+playerImg.src = "player.png";
+
+let spikeImg = new Image();
+spikeImg.src = "spike.png";
+
+let music = new Audio("music.mp3");
+music.loop = true;
+
+// STATE
+let state = "menu";
+let mode = "cube";
+let editorMode = false;
+
+// MODS
+let mods = { speedHack:false, rainbow:true, practice:false };
+
+// PLAYER
+let player = {
+  x:100, y:300, size:30,
+  velocityY:0, gravity:0.8,
+  grounded:true, rotation:0
+};
+
+let holding = false;
+let frame = 0;
+let speed = 5;
+let score = 0;
+let gameOver = false;
+let shake = 0;
+
+// LEVEL SYSTEM
+let level = [
+  {type:"spike", x:500, y:310},
+  {type:"spike", x:650, y:310},
+  {type:"orb", x:750, y:250},
+  {type:"portal", x:900, y:260, mode:"ship"},
+  {type:"spike", x:1100, y:200},
+  {type:"portal", x:1300, y:260, mode:"wave"}
+];
+
+// SAVE / LOAD
+function saveLevel(){ localStorage.setItem("lvl", JSON.stringify(level)); }
+function loadLevel(){ let d=localStorage.getItem("lvl"); if(d) level=JSON.parse(d); }
+
+// INPUT
+function press(){
+  if(state==="menu"){ state="play"; music.play(); return; }
+
+  if(mode==="cube" && player.grounded){
+    player.velocityY = -12;
+    player.grounded = false;
+  }
+
+  if(gameOver) reset();
+}
+
+document.addEventListener("keydown", e=>{
+  if(e.code==="Space"){ holding=true; press(); }
+  if(e.key==="m") mode = mode==="cube"?"wave":mode==="wave"?"ship":"cube";
+  if(e.key==="e") editorMode=!editorMode;
+  if(e.key==="k
