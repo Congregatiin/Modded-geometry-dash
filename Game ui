@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>GD FULL ENGINE + ICONS</title>
+  <style>
+    body { margin:0; overflow:hidden; background:black; }
+    canvas { display:block; margin:auto; }
+  </style>
+</head>
+<body>
+<canvas id="c"></canvas>
+
+<script>
+const c = document.getElementById("c");
+const ctx = c.getContext("2d");
+c.width = 800;
+c.height = 400;
+
+// STATE
+let state="menu";
+let modes=["cube","wave","ship","ufo","ball"];
+let mode="cube";
+let editorMode=false;
+let menuOpen=false;
+
+// MODS
+let mods={speedHack:false,rainbow:true,practice:false};
+
+// PLAYER
+let player={
+  x:100,y:300,size:30,
+  velocityY:0,gravity:0.8,
+  grounded:true,rotation:0
+};
+
+let holding=false;
+let frame=0;
+let speed=5;
+let gameOver=false;
+let shake=0;
+
+// LEVEL + TRIGGERS
+let level=[];
+let triggers=[];
+let activeTriggers=[];
+
+// EDITOR
+let grid=40;
+let tool="spike";
+
+// ================= ICON SYSTEM =================
+function drawIcon(type,x,y,size){
+  ctx.save();
+  ctx.translate(x,y);
+
+  switch(type){
+    case "cube":
+      ctx.fillStyle="lime";
+      ctx.fillRect(-size/2,-size/2,size,size);
+      break;
+
+    case "wave":
+      ctx.strokeStyle="cyan";
+      ctx.beginPath();
+      ctx.moveTo(-size/2,size/2);
+      ctx.lineTo(0,-size/2);
+      ctx.lineTo(size/2,size/2);
+      ctx.stroke();
+      break;
+
+    case "ship":
+      ctx.fillStyle="orange";
+      ctx.beginPath();
+      ctx.moveTo(-size/2,size/3);
+      ctx.lineTo(size/2,0);
+      ctx.lineTo(-size/2,-size/3);
+      ctx.fill();
+      break;
+
+    case "ufo":
+      ctx.fillStyle="pink";
+      ctx.beginPath();
+      ctx.arc(0,0,size/2,0,Math.PI*2);
+      ctx.fill();
+      break;
+
+    case "ball":
+      ctx.fillStyle="white";
+      ctx.beginPath();
+      ctx.arc(0,0,size/2,0,Math.PI*2);
+      ctx.fill();
+      break;
+
+    case "spike":
+      ctx.fillStyle="red";
+      ctx.beginPath();
+      ctx.moveTo(0,-size/2);
+      ctx.lineTo(size/2,size/2);
+      ctx.lineTo(-size/2,size/2);
+      ctx.fill();
+      break;
+
+    case "orb":
+      ctx.fillStyle="yellow";
+      ctx.beginPath();
+      ctx.arc(0,0,size/2,0,Math.PI*2);
+      ctx.fill();
+      break;
+
+    case "portal":
+      ctx.strokeStyle="purple";
+      ctx.strokeRect(-size/2,-size,size,size*2);
+      break;
+  }
+
+  ctx.restore();
+}
+// =================================================
+
+// INPUT
+function press(){
+  if(state==="menu"){state="play";return;}
+
+  if(mode==="cube"&&player.grounded){
+    player.velocityY=-12;
+    player.grounded=false;
+  }
+  if(mode==="ufo") player.velocityY=-8;
+  if(mode==="ball"&&player.grounded){
+    player.gravity*=-1;
+    player.grounded=false;
+  }
+
+  if(gameOver) reset();
+}
+
+document.addEventListener("keydown",e=>{
+  if(e.code==="Space"){holding=true;press();}
+  if(e.key==="Tab"){e.preventDefault();menuOpen=!menuOpen;}
+  if(e.key==="m") mode=modes[(modes.indexOf(mode)+1)%modes.length];
+  if(e.key==="e") editorMode=!editorMode;
+
+  if(e.key==="1") tool="spike";
+  if(e.key==="2") tool="orb";
+  if(e.key==="3") tool="portal";
+  if(e.key==="4") tool="moveTrigger";
+  if(e.key==="5") tool="colorTrigger";
+});
+
+document.addEventListener("keyup",e=>{
+  if(e.code==="Space") holding=false;
+});
+
+// CLICK
+c.addEventListener("click",e=>{
+  let r=c.getBoundingClientRect();
+  let mx=e.clientX-r.left;
+  let my=e.clientY-r.top;
+
+  if(menuOpen){
+    if(mx>620&&mx<780&&my>60&&my<90) mods.speedHack=!mods.speedHack;
+    if(mx>620&&mx<780&&my>100&&my<130) mods.rainbow=!mods.rainbow;
+    if(mx>620&&mx<780&&my>140&&my<170) mods.practice=!mods.practice;
+    return;
+  }
+
+  if(editorMode){
+    let x=Math.floor(mx/grid)*grid;
+    let y=Math.floor(my/grid)*grid;
+
+    if(tool==="spike") level.push({type:"spike",x,y});
+    if(tool==="orb") level.push({type:"orb",x,y});
+    if(tool==="portal") level.push({type:"portal",x,y,mode:"ship"});
+
+    if(tool==="moveTrigger"){
+      triggers.push({type:"move",x,y,target:0,moveY:-100,duration:60});
+    }
+
+    if(tool==="colorTrigger"){
+      triggers.push({type:"color",x,y,color:"red"});
+    }
+  }
+});
+
+// DELETE
+c.addEventListener("contextmenu",e=>{
+  e.preventDefault();
+  let r=c.getBoundingClientRect();
+  let mx=e.clientX-r.left;
+  let my=e.clientY-r.top;
+
+  level=level.filter(o=>!(mx>o.x&&mx<o.x+40&&my>o.y&&my<o.y+40));
+  triggers=triggers.filter(t=>!(mx>t.x&&mx<t.x+20&&my>t.y&&my<t.y+20));
+});
+
+// RESET
+function reset(){
+  player.y=300;
+  player.velocityY=0;
+  player.gravity=0.8;
+  gameOver=false;
+}
+
+// UPDATE
+function update(){
+  if(state!=="play"||gameOver) return;
+
+  frame++;
+  let sp=mods.speedHack?speed*2:speed;
+
+  // physics per mode
+  if(mode==="cube"){
+    player.velocityY+=player.gravity;
+    player.y+=player.velocityY;
+    if(player.y>=300){
+      player.y=300;player.velocityY=0;player.grounded=true;
+    }
+  }
+
+  if(mode==="wave"){
+    if(holding) player.y-=6;
+    else player.y+=6;
+  }
+
+  if(mode==="ship"){
+    if(holding) player.velocityY-=0.5;
+    else player.velocityY+=0.5;
+    player.velocityY=Math.max(-6,Math.min(6,player.velocityY));
+    player.y+=player.velocityY;
+  }
+
+  if(mode==="ufo"){
+    player.velocityY+=0.6;
+    player.y+=player.velocityY;
+  }
+
+  if(mode==="ball"){
+    player.velocityY+=player.gravity;
+    player.y+=player.velocityY;
+    if(player.y>=300||player.y<=50){
+      player.velocityY=0;
+      player.grounded=true;
+    }
+  }
+
+  // level objects
+  level.forEach(o=>{
+    if(!editorMode) o.x-=sp;
+
+    if(o.type==="spike"){
+      if(player.x<o.x+40&&player.x+30>o.x&&player.y<o.y+40&&player.y+30>o.y){
+        shake=20;
+        if(mods.practice) player.y=200;
+        else gameOver=true;
+      }
+    }
+
+    if(o.type==="orb"){
+      if(player.x<o.x+20&&player.x+30>o.x&&player.y<o.y+20&&player.y+30>o.y){
+        if(holding) player.velocityY=-12;
+      }
+    }
+
+    if(o.type==="portal"){
+      if(player.x<o.x+30&&player.x+30>o.x&&player.y<o.y+60&&player.y+30>o.y){
+        mode=o.mode;
+      }
+    }
+  });
+
+  // triggers
+  triggers.forEach(t=>{
+    t.x-=sp;
+    if(player.x<t.x+20&&player.x+30>t.x&&player.y<t.y+20&&player.y+30>t.y){
+      activeTriggers.push({...t,progress:0});
+    }
+  });
+
+  activeTriggers.forEach(tr=>{
+    if(tr.type==="move"){
+      let obj=level[tr.target];
+      if(obj) obj.y+=tr.moveY/tr.duration;
+    }
+    if(tr.type==="color"){
+      c.style.background=tr.color;
+    }
+    tr.progress++;
+  });
+
+  activeTriggers=activeTriggers.filter(tr=>tr.progress<(tr.duration||1));
+}
+
+// DRAW
+function draw(){
+  ctx.clearRect(0,0,800,400);
+
+  if(state==="menu"){
+    ctx.fillStyle="white";
+    ctx.fillText("GD FULL ENGINE",300,200);
+    return;
+  }
+
+  // PLAYER
+  drawIcon(mode,player.x+15,player.y+15,30);
+
+  // LEVEL
+  level.forEach(o=>{
+    drawIcon(o.type,o.x+20,o.y+20,30);
+  });
+
+  // TRIGGERS
+  if(editorMode){
+    triggers.forEach(t=>{
+      ctx.fillStyle="cyan";
+      ctx.fillRect(t.x,t.y,20,20);
+    });
+  }
+
+  // UI
+  ctx.fillStyle="white";
+  ctx.fillText("Mode:",10,20);
+  drawIcon(mode,70,15,20);
+
+  // MODE BAR
+  modes.forEach((m,i)=>{
+    drawIcon(m,300+i*50,30,20);
+  });
+
+  // EDITOR BAR
+  if(editorMode){
+    ctx.fillRect(0,350,800,50);
+    drawIcon("spike",50,375,25);
+    drawIcon("orb",120,375,25);
+    drawIcon("portal",190,375,25);
+  }
+
+  // MOD MENU
+  if(menuOpen){
+    ctx.fillRect(600,20,180,200);
+    drawIcon("cube",610,75,15);
+    drawIcon("wave",610,115,15);
+    drawIcon("ball",610,155,15);
+  }
+}
+
+// LOOP
+function loop(){
+  update();
+  draw();
+  requestAnimationFrame(loop);
+}
+loop();
+</script>
+</body>
+</html>
